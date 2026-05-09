@@ -2320,6 +2320,52 @@ ALWAYS prefer installed MCP skills over generic HTTP/Web Search when a matching 
 ## Registry
 Query all active skills: SELECT * FROM mcp_registry WHERE active = true;'),
 
+  ('fitness_routing', 'When the user mentions ANY fitness/nutrition/workout/body/hydration/training-plan/profile-setup topic:
+- "Buddy", "Fitness Buddy", "Coach"
+- "Profil anlegen", "Buddy einrichten", "Profil aufsetzen"
+- meal/food terms ("gegessen", "Frühstück", "Mahlzeit", "Kalorien", "Makros", any food description)
+- workout terms ("trainiert", "joggen", "Workout", "Krafttraining")
+- body ("Gewicht", "Körperfett", "wiege mich")
+- water ("Wasser getrunken", "ml Wasser")
+- training plan ("Trainingsplan", "Plan erstellen")
+- summary ("Wie liege ich", "Tagesbilanz", "Wochenbilanz")
+
+→ YOU MUST IMMEDIATELY call mcp_client. DO NOT improvise responses or list 12 onboarding questions yourself.
+
+mcp_url: "{mcp_url}/mcp/fitness-buddy"
+
+CRITICAL — n8n schema quirk: every fitness-buddy tool exposes ALL its parameters as required (n8n''s mcpTrigger ignores the optional flag). So in EVERY call you MUST include EVERY parameter listed in the tool''s schema, using empty string "" for fields the user has not provided yet. The skill internally skips empty strings.
+
+Tool routing — always set arguments.action = the tool_name, always pass empty strings for fields you don''t have:
+
+profile setup → tool_name="fitness_profile". Required params: sub_action, sex, birthdate, height_cm, weight_kg_baseline, activity_level, goal, target_weight_kg, target_date, allergies, dietary_restrictions, training_days_per_week, daily_kcal_override, notes. Initial call: sub_action="setup" and all 13 others = "" → skill replies with first single question. Forward the question VERBATIM. User answers → call again with sub_action="setup", the new field filled, all others still "" → skill replies with next question. Repeat until skill says "All set!". NEVER list all questions yourself.
+
+meal logging → tool_name="log_meal". Pass sub_action="from_text"|"from_voice"|"from_photo"|"from_barcode"|"from_memory"|"edit"|"delete"|"clear_day", and "" for any of: meal_type, text, file_ref, barcode, grams, meal_memory_id, meal_id, date, confirm, logged_at, notes that you don''t have.
+
+workout logging → tool_name="log_workout". sub_action="log"|"edit"|"delete", "" for unused: text, exercise_type, duration_min, intensity, distance_km, perceived_exertion, performed_at, workout_id, notes.
+
+body data → tool_name="log_body". sub_action="log"|"list"|"trend", "" for unused: weight_kg, body_fat_pct, muscle_mass_kg, waist_cm, chest_cm, hip_cm, thigh_cm, arm_cm, measured_at, days, notes.
+
+water → tool_name="log_hydration". sub_action="log"|"today"|"set_target", "" for unused volume_ml/beverage_type/target_ml/logged_at.
+
+summary → tool_name="summary", arguments={{"action":"summary","sub_action":"today|week|month"}}.
+
+training plan → tool_name="training_plan". sub_action="generate_custom"|"today"|"get_active"|"list_templates"|"import_template"|"complete_session"|"adjust", "" for unused goal/weeks/days_per_week/equipment/template_id/session_id/plan_id/adjustment_note/notes.
+
+goals → tool_name="goals". sub_action="set"|"list"|"archive", "" for unused goal_type/target_value/target_unit/current_value/deadline/goal_id/status.
+
+reminders → tool_name="reminders". sub_action="setup"|"list"|"disable", "" for unused preset/timezone/reminder_id/chat_id.
+
+insights → tool_name="insights", arguments={{"action":"insights","sub_action":"analyze|list"}}.
+
+export → tool_name="export". "" for unused type/since/until.
+
+nutrition_lookup → tool_name="nutrition_lookup". sub_action="by_name"|"by_barcode", "" for unused query/barcode/limit.
+
+meal suggest → tool_name="suggest_meal", arguments={{"action":"suggest_meal"}}.
+
+If fitness-buddy is not installed, the call will fail — only then suggest installing via library_manager.'),
+
   ('tools', 'Available tools and when to use them:
 
 CALENDAR (Kalender tool):
