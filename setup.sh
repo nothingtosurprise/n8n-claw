@@ -670,6 +670,16 @@ if [ -n "$PG17_ERRORS" ]; then
 fi
 echo "  ✅ PG17 compat applied"
 
+echo "  Applying Fitness Buddy schema migration..."
+FITNESS_OUTPUT=$(LANG=C LC_ALL=C PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U postgres -d postgres \
+  -f supabase/migrations/008_fitness_schema.sql 2>&1)
+FITNESS_ERRORS=$(echo "$FITNESS_OUTPUT" | grep -i "error" | head -5)
+if [ -n "$FITNESS_ERRORS" ]; then
+  echo -e "  ${YELLOW}⚠️  Fitness Buddy migration warnings:${NC}"
+  echo "$FITNESS_ERRORS" | while read line; do echo "    $line"; done
+fi
+echo "  ✅ Fitness Buddy schema applied"
+
 # Reload PostgREST schema cache so new tables are immediately available via API
 docker kill --signal=SIGUSR1 $(docker ps -q --filter name=rest) 2>/dev/null || true
 
