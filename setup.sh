@@ -1912,6 +1912,27 @@ if [ "$INSTALL_MODE" = "update" ] && [ "$FORCE_FLAG" != "--force" ] && [ -z "${E
   fi
 fi
 
+# ── Pre-seed template_credentials with shared OpenAI key ────
+# If OPENAI_API_KEY was provided during setup, write it to template_credentials
+# for any skill that wants to reuse it (currently fitness-buddy).
+# This avoids the user having to enter the same key twice via the credential form.
+# Idempotent — uses ON CONFLICT to update existing rows. Silent fail (template_credentials
+# is created by 001_schema.sql so it should always exist by this point).
+if [ -n "$OPENAI_API_KEY" ] && [[ "$OPENAI_API_KEY" != "your_"* ]]; then
+  set +e
+  LANG=C LC_ALL=C PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U postgres -d postgres -c "
+    INSERT INTO public.template_credentials (template_id, cred_key, cred_value)
+    VALUES ('fitness-buddy', 'openai_api_key', \$\$${OPENAI_API_KEY}\$\$)
+    ON CONFLICT (template_id, cred_key) DO UPDATE
+      SET cred_value = EXCLUDED.cred_value, updated_at = NOW();
+  " > /dev/null 2>&1
+  PRESEED_RC=$?
+  set -e
+  if [ "$PRESEED_RC" -eq 0 ]; then
+    echo -e "  ${GREEN}ℹ️  OpenAI key pre-seeded for fitness-buddy skill (no re-entry needed on install)${NC}"
+  fi
+fi
+
 # ── 12. Setup Wizard via CLI (no n8n workflow needed) ────────
 
 # Load existing personalization from DB (needed for skip-question and defaults)
