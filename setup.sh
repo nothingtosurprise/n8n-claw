@@ -670,6 +670,16 @@ if [ -n "$PG17_ERRORS" ]; then
 fi
 echo "  ✅ PG17 compat applied"
 
+echo "  Applying Fitness Buddy schema migration..."
+FITNESS_OUTPUT=$(LANG=C LC_ALL=C PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U postgres -d postgres \
+  -f supabase/migrations/008_fitness_schema.sql 2>&1)
+FITNESS_ERRORS=$(echo "$FITNESS_OUTPUT" | grep -i "error" | head -5)
+if [ -n "$FITNESS_ERRORS" ]; then
+  echo -e "  ${YELLOW}⚠️  Fitness Buddy migration warnings:${NC}"
+  echo "$FITNESS_ERRORS" | while read line; do echo "    $line"; done
+fi
+echo "  ✅ Fitness Buddy schema applied"
+
 # Reload PostgREST schema cache so new tables are immediately available via API
 docker kill --signal=SIGUSR1 $(docker ps -q --filter name=rest) 2>/dev/null || true
 
@@ -1902,6 +1912,27 @@ if [ "$INSTALL_MODE" = "update" ] && [ "$FORCE_FLAG" != "--force" ] && [ -z "${E
   fi
 fi
 
+# ── Pre-seed template_credentials with shared OpenAI key ────
+# If OPENAI_API_KEY was provided during setup, write it to template_credentials
+# for any skill that wants to reuse it (currently fitness-buddy).
+# This avoids the user having to enter the same key twice via the credential form.
+# Idempotent — uses ON CONFLICT to update existing rows. Silent fail (template_credentials
+# is created by 001_schema.sql so it should always exist by this point).
+if [ -n "$OPENAI_API_KEY" ] && [[ "$OPENAI_API_KEY" != "your_"* ]]; then
+  set +e
+  LANG=C LC_ALL=C PGPASSWORD=$POSTGRES_PASSWORD psql -h localhost -U postgres -d postgres -c "
+    INSERT INTO public.template_credentials (template_id, cred_key, cred_value)
+    VALUES ('fitness-buddy', 'openai_api_key', \$\$${OPENAI_API_KEY}\$\$)
+    ON CONFLICT (template_id, cred_key) DO UPDATE
+      SET cred_value = EXCLUDED.cred_value, updated_at = NOW();
+  " > /dev/null 2>&1
+  PRESEED_RC=$?
+  set -e
+  if [ "$PRESEED_RC" -eq 0 ]; then
+    echo -e "  ${GREEN}ℹ️  OpenAI key pre-seeded for fitness-buddy skill (no re-entry needed on install)${NC}"
+  fi
+fi
+
 # ── 12. Setup Wizard via CLI (no n8n workflow needed) ────────
 
 # Load existing personalization from DB (needed for skip-question and defaults)
@@ -2288,6 +2319,58 @@ ALWAYS prefer installed MCP skills over generic HTTP/Web Search when a matching 
 
 ## Registry
 Query all active skills: SELECT * FROM mcp_registry WHERE active = true;'),
+
+  ('fitness_routing', 'When the user mentions ANY fitness/nutrition/workout/body/hydration/training-plan/profile-setup topic:
+- "Buddy", "Fitness Buddy", "Coach"
+- "Profil anlegen", "Buddy einrichten", "Profil aufsetzen"
+- meal/food terms ("gegessen", "Frühstück", "Mahlzeit", "Kalorien", "Makros", any food description)
+- workout terms ("trainiert", "joggen", "Workout", "Krafttraining")
+- body ("Gewicht", "Körperfett", "wiege mich")
+- water ("Wasser getrunken", "ml Wasser")
+- training plan ("Trainingsplan", "Plan erstellen")
+- summary ("Wie liege ich", "Tagesbilanz", "Wochenbilanz")
+
+→ YOU MUST IMMEDIATELY call mcp_client → fitness-buddy. DO NOT improvise responses or list 12 onboarding questions yourself.
+
+CRITICAL — NEVER ROUTE FITNESS TOPICS TO OTHER TOOLS:
+- NEVER use expert_agent (research-expert, content-creator, etc.) for any fitness/nutrition/workout/training-plan/profile/body/hydration topic. Even if the user asks for "research" or a "detailed plan" — fitness-buddy is the ONLY authorized handler.
+- NEVER use Web Search, Web Reader, or HTTP request tools to assemble fitness content from external sources. The skill already integrates wger.de exercises and OpenFoodFacts internally.
+- If the mcp_client call to fitness-buddy fails or returns an error message (e.g. "Plan generation failed", "Request failed with status code 400", "OpenAI API error", validation rejection), you MUST pass the actual error to the user verbatim and suggest a retry. NEVER make up a workout plan, meal estimate, calorie count, exercise list, or any other fitness data — and NEVER fall back to the research-expert as a workaround.
+- The fitness-buddy skill is the only source of truth for fitness data. If it fails, the data does not exist. Reporting fabricated or research-expert-generated data as if it came from Buddy is a critical bug.
+
+mcp_url: "{mcp_url}/mcp/fitness-buddy"
+
+CRITICAL — n8n schema quirk: every fitness-buddy tool exposes ALL its parameters as required (n8n''s mcpTrigger ignores the optional flag). So in EVERY call you MUST include EVERY parameter listed in the tool''s schema, using empty string "" for fields the user has not provided yet. The skill internally skips empty strings.
+
+Tool routing — always set arguments.action = the tool_name, always pass empty strings for fields you don''t have:
+
+profile setup → tool_name="fitness_profile". Required params: sub_action, sex, birthdate, height_cm, weight_kg_baseline, activity_level, goal, target_weight_kg, target_date, allergies, dietary_restrictions, training_days_per_week, daily_kcal_override, notes. Initial call: sub_action="setup" and all 13 others = "" → skill replies with first single question. Forward the question VERBATIM. User answers → call again with sub_action="setup", the new field filled, all others still "" → skill replies with next question. Repeat until skill says "All set!". NEVER list all questions yourself.
+
+meal logging → tool_name="log_meal". Pass sub_action="from_text"|"from_voice"|"from_photo"|"from_barcode"|"from_memory"|"edit"|"delete"|"clear_day", and "" for any of: meal_type, text, file_ref, barcode, grams, meal_memory_id, meal_id, date, confirm, logged_at, notes that you don''t have.
+
+workout logging → tool_name="log_workout". sub_action="log"|"edit"|"delete", "" for unused: text, exercise_type, duration_min, intensity, distance_km, perceived_exertion, performed_at, workout_id, notes.
+
+body data → tool_name="log_body". sub_action="log"|"list"|"trend", "" for unused: weight_kg, body_fat_pct, muscle_mass_kg, waist_cm, chest_cm, hip_cm, thigh_cm, arm_cm, measured_at, days, notes.
+
+water → tool_name="log_hydration". sub_action="log"|"today"|"set_target", "" for unused volume_ml/beverage_type/target_ml/logged_at.
+
+summary → tool_name="summary", arguments={{"action":"summary","sub_action":"today|week|month"}}.
+
+training plan → tool_name="training_plan". sub_action="generate_custom"|"today"|"get_active"|"complete_session"|"adjust", "" for unused goal/weeks/days_per_week/equipment/session_id/plan_id/adjustment_note/notes. (Note: list_templates/import_template paths are deprecated — wger public-templates require auth.)
+
+goals → tool_name="goals". sub_action="set"|"list"|"archive", "" for unused goal_type/target_value/target_unit/current_value/deadline/goal_id/status.
+
+reminders → tool_name="reminders". sub_action="setup"|"list"|"disable", "" for unused preset/timezone/reminder_id/chat_id.
+
+insights → tool_name="insights", arguments={{"action":"insights","sub_action":"analyze|list"}}.
+
+export → tool_name="export". "" for unused type/since/until.
+
+nutrition_lookup → tool_name="nutrition_lookup". sub_action="by_name"|"by_barcode", "" for unused query/barcode/limit.
+
+meal suggest → tool_name="suggest_meal", arguments={{"action":"suggest_meal"}}.
+
+If fitness-buddy is not installed, the call will fail — only then suggest installing via library_manager.'),
 
   ('tools', 'Available tools and when to use them:
 
