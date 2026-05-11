@@ -2636,7 +2636,7 @@ HOW TO REPORT:
 - If the execution URL is present in the content, offer it as a clickable reference
 - Do NOT invent errors — if memory_search returns nothing for the relevant window, say so plainly'),
 
-  ('browser_use', 'You have access to the "browser_action" tool — a real Chromium browser driven by an AI agent (Browser Use SDK) for actions on websites.
+  ('browser_use', 'You have access to the browser_action tool — a real Chromium browser driven by an AI agent (Browser Use SDK) for actions on websites.
 
 WHEN to use:
 - User wants to perform an action on a website: newsletter signup, contact form, click flow, login, create an entry, place an order
@@ -2644,30 +2644,30 @@ WHEN to use:
 - NOT for simple read-only fetches — use web_reader (Crawl4AI) for those (much faster)
 
 HOW to use:
-- Pass a JSON string in `query` to the tool. Required: `action`.
-- action="task": run a natural-language browser task.
-  - Required: `task` (what to do, in plain language).
-  - Optional: `url` (starting URL), `domain` (e.g. "github.com"), `max_steps` (default 25), `timeout_s` (default 300).
-  - When `domain` is set, the browser session is pooled and reused across calls on the same domain → the agent stays logged in.
-- action="list_sessions": list active pooled browser sessions (which domains the user is currently "logged in" on).
-- action="close_session": close a specific pooled session. Required: `domain`.
+- Pass a JSON string to the tool. The required field is action.
+- action=task: run a natural-language browser task.
+  - Required: task (what to do, in plain language).
+  - Optional: url (starting URL), domain (e.g. ''github.com''), max_steps (default 25), timeout_s (default 300).
+  - When domain is set, the browser session is pooled and reused across calls on the same domain → the agent stays logged in.
+- action=list_sessions: list active pooled browser sessions (which domains the user is currently logged in on).
+- action=close_session: close a specific pooled session. Required: domain.
 
 PERSISTENT LOGIN PATTERN:
-- First login on a site (e.g. GitHub): user must provide credentials. Use action="task" with `domain="github.com"` and the task description "Log in to github.com with username X and password Y, then …". The session stays alive in the bridge for 30 min after the last task and is reused if you pass the same `domain` again.
-- Subsequent actions: just call action="task" with `domain="github.com"`, the cookies are still there.
+- First login on a site (e.g. GitHub): user must provide credentials. Use action=task with domain set and a task like ''Log in to github.com with username X and password Y, then ...''. The session stays alive in the bridge for 30 min after the last task and is reused if you pass the same domain again.
+- Subsequent actions: just call action=task with the same domain, the cookies are still there.
 - IMPORTANT: sessions are in-memory only. After a VPS reboot or bridge restart, the user must log in again. Tell the user this if relevant.
 
 SAFETY:
 - For sensitive actions (purchases, posts, irreversible changes, banking) ALWAYS confirm with the user via Telegram first.
-- Typical task takes 30–90 seconds. Tell the user "moment, das dauert ein paar Sekunden" so they know to wait.
+- Typical task takes 30–90 seconds. Tell the user ''moment, das dauert ein paar Sekunden'' so they know to wait.
 - If 2FA / MFA appears, do not try to solve it — tell the user and ask them to complete it manually next time they log in via their own browser.
 - If a CAPTCHA appears, return the screenshot URL (if available) and tell the user.
 
 EXAMPLES:
-- {"action": "task", "task": "Sign up for the newsletter on https://example.com with email me@example.com"}
-- {"action": "task", "task": "Open the latest issue on the repo and add a comment saying ''looking into it''", "domain": "github.com"}
-- {"action": "list_sessions"}
-- {"action": "close_session", "domain": "github.com"}'),
+- {{"action": "task", "task": "Sign up for the newsletter on https://example.com with email me@example.com"}}
+- {{"action": "task", "task": "Open the latest issue on the repo and add a comment saying looking into it", "domain": "github.com"}}
+- {{"action": "list_sessions"}}
+- {{"action": "close_session", "domain": "github.com"}}'),
 
   ('user_context', 'The user is {user}. Context: {ctx}')
 
