@@ -5,6 +5,33 @@ Format based on [Keep a Changelog](https://keepachangelog.com/).
 
 ---
 
+## [1.9.2] — 2026-06-04
+
+### Fixed: config backups failing with 413, and silently dropping the persona/config table since Issue #35
+
+Two bugs in the `config-backup` skill's full backup, found from a failing live execution. **(1) 413 Payload Too Large:** the backup is POSTed as base64 JSON to `file-bridge:3200/upload/base64`; once the DB grew to ~19 MB the base64 body (~25 MB) exceeded the file-bridge's hardcoded `express.json({ limit: '25mb' })`, which was also inconsistent with the env-configurable `MAX_FILE_SIZE_MB` (20 MB). Automatic backups had been failing/shrinking since ~2026-06-01. **(2) Silent data gap:** the backup's `TABLE_DEFS`/`SCOPES`/`UPSERT_TABLES` still named the table `agents`, not `claw_agents`. Since the Issue #35 rename, every full backup wrote `claw_agents: 0 rows` (the read 400'd and was swallowed by the per-table try/catch), so the system-prompt source table was not actually being backed up.
+
+### Changed
+
+- **`file-bridge/server.js`** — `/upload/base64` accepts a `compress: true` flag and gzips the payload at rest (`encoding: 'gzip'` in meta). `GET /files/:id` and `/files/:id/forward` decompress on the fly, so every consumer (show/restore/Seafile/browser) still receives the original bytes. Transparent and opt-in: old files and other skills' uploads are byte-for-byte unchanged. The Express body limit is now derived from `MAX_FILE_SIZE_MB` (override via `MAX_BODY_SIZE_MB`), removing the hardcoded-vs-env mismatch.
+- **`docker-compose.yml`** — `MAX_FILE_SIZE_MB` 20 → 200 (Express body limit derives ~296 MB).
+- **`workflows/mcp-library-manager.json`** — CDN pin bumped to `n8n-claw-templates@6089521` (config-backup v1.2.0).
+- **`config-backup` skill (n8n-claw-templates@6089521, v1.2.0)** — `agents` → `claw_agents` in `TABLE_DEFS`/`SCOPES`/`UPSERT_TABLES`; restore adds a legacy alias `agents` → `claw_agents` so pre-#35 backups still restore into the new table; sends `compress: true`; backup-format/manifest/index bumped to 1.2.0.
+
+### Restore safety
+
+Restore needs no compression code: the n8n Code node can't `require('zlib')` (`NODE_FUNCTION_ALLOW_BUILTIN` unset — the same reason compression is server-side), so it relies on the source serving plain JSON, which the file-bridge guarantees on every read path. Verified for new backups (`claw_agents` key) and legacy backups (`agents` key → aliased).
+
+### Validated
+
+- Live on the n8n-claw VPS after `setup.sh --force` + config-backup reinstall: execution `143017` produced a 19.0 MB / 11372-row full backup with `claw_agents: 19 rows` (was 0), uploaded without 413; execution `143019` forwarded it to Seafile (`File uploaded … 19.2 MB`). End-to-end: DB → file-bridge (gzipped at rest) → Seafile (plain JSON).
+
+### Upgrade notes
+
+- **Existing installs:** `git pull && ./setup.sh --force` (rebuilds file-bridge, re-imports the Library Manager with the new CDN pin), then reinstall the `config-backup` skill to pick up gzip + the `claw_agents` fix. No breaking changes to stored files.
+
+---
+
 ## [1.9.1] — 2026-05-31
 
 ### Fixed: n8n 2.21+ startup crash from `agents` table name collision (Issue #35)
