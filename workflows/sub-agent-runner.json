@@ -198,7 +198,10 @@
           "systemMessage": "={{ $json.systemPrompt }}",
           "maxIterations": 25
         }
-      }
+      },
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000
     },
     {
       "id": "sub-claude",
