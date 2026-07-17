@@ -319,8 +319,10 @@
       "parameters": {
         "operation": "sendMessage",
         "chatId": "={{ $json.chat_id }}",
-        "text": "={{ $json.checkerMessage }}",
-        "additionalFields": {}
+        "text": "={{ ($json.checkerMessage || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
       },
       "id": "send-telegram",
       "name": "Send Telegram",
