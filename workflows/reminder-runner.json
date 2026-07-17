@@ -261,7 +261,7 @@
     },
     {
       "parameters": {
-        "jsCode": "// Mark reminder as sent\nconst id = $('Has Reminders').item.json.id;\nawait helpers.httpRequest({\n  method: 'PATCH',\n  url: `{{SUPABASE_URL}}/rest/v1/reminders?id=eq.${id}`,\n  headers: {\n    'apikey': '{{SUPABASE_SERVICE_KEY}}',\n    'Content-Type': 'application/json'\n  },\n  body: { reminded_at: new Date().toISOString() },\n  json: true\n});\n\nreturn [{ json: { id, marked: true } }];"
+        "jsCode": "// Mark ALL processed reminders as sent — $('Has Reminders').item resolves\n// only the first item of a batch here, which left the rest unmarked and\n// re-sent every minute; itemMatching(i) follows each item's pairing instead.\nconst marked = [];\nfor (let i = 0; i < $input.all().length; i++) {\n  const id = $('Has Reminders').itemMatching(i).json.id;\n  await helpers.httpRequest({\n    method: 'PATCH',\n    url: `{{SUPABASE_URL}}/rest/v1/reminders?id=eq.${id}`,\n    headers: {\n      'apikey': '{{SUPABASE_SERVICE_KEY}}',\n      'Content-Type': 'application/json'\n    },\n    body: { reminded_at: new Date().toISOString() },\n    json: true\n  });\n  marked.push({ json: { id, marked: true } });\n}\nreturn marked;"
       },
       "name": "Mark Done",
       "type": "n8n-nodes-base.code",
