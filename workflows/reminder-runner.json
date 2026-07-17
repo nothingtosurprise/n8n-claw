@@ -209,9 +209,10 @@
     {
       "parameters": {
         "chatId": "={{ $json.chat_id }}",
-        "text": "=\u23f0 {{ $json.message }}",
+        "text": "=\u23f0 {{ ($json.message || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}",
         "additionalFields": {
-          "appendAttribution": false
+          "appendAttribution": false,
+          "parse_mode": "HTML"
         }
       },
       "name": "Send Messages",

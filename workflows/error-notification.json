@@ -12,8 +12,10 @@
     {
       "parameters": {
         "chatId": "{{TELEGRAM_CHAT_ID}}",
-        "text": "=🚨 Error in {{ $json.workflow.name }}\n\n{{ $json.execution.error.message }}\n\nNode: {{ $json.execution.lastNodeExecuted }}\nExecution: {{ $json.execution.url }}",
-        "additionalFields": {}
+        "text": "=🚨 Error in {{ ($json.workflow.name || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}\n\n{{ ($json.execution.error?.message || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}\n\nNode: {{ ($json.execution.lastNodeExecuted || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;') }}\nExecution: {{ $json.execution.url }}",
+        "additionalFields": {
+          "parse_mode": "HTML"
+        }
       },
       "id": "telegram-notify",
       "name": "Send Telegram Alert",
